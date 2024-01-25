@@ -18,6 +18,8 @@
  */
 
 #include "window.h"
+#include <glad/gl.h>
+#include <glad/wgl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -152,6 +154,9 @@ typedef struct
   wchar_t *title_w;
   bool should_close;
   HINSTANCE hinstance;
+  HDC hdc;
+  HGLRC rc;
+  bool hasGl;
 } Win32Window;
 
 LRESULT CALLBACK
@@ -163,6 +168,18 @@ birchWindowProc(HWND hwnd, UINT uMsg, WPARAM wparam, LPARAM lparam)
     {
     case WM_DESTROY:
       window->should_close = true;
+      return 0;
+    case WM_SIZE:
+      window->base.width  = LOWORD(lparam);
+      window->base.height = HIWORD(lparam);
+      if (window->hasGl)
+        {
+          glViewport(0, 0, window->base.width, window->base.height);
+        }
+      if (window->base.resizeCallback)
+        {
+          window->base.resizeCallback(window->base.width, window->base.height);
+        }
       return 0;
     }
   return DefWindowProcW(hwnd, uMsg, wparam, lparam);
@@ -177,8 +194,6 @@ birchWindowNew(unsigned int width, unsigned int height, const char *title)
       return NULL;
     }
 
-  char error_message[30];
-
   window->base.width                       = width;
   window->base.height                      = height;
   window->base.title                       = title;
@@ -189,6 +204,7 @@ birchWindowNew(unsigned int width, unsigned int height, const char *title)
   window->base.mouseButtonPressedCallback  = NULL;
   window->base.mouseButtonReleasedCallback = NULL;
   window->should_close                     = false;
+  window->hasGl                            = false;
 
   HINSTANCE hinstance = GetModuleHandle(NULL);
   window->hinstance   = hinstance;
@@ -202,8 +218,6 @@ birchWindowNew(unsigned int width, unsigned int height, const char *title)
 
   if (!RegisterClassW((const WNDCLASS *)&wc))
     {
-      snprintf(error_message, 30, "RegisterClassW() failed with code %d",
-               GetLastError());
       MessageBoxW(NULL, L"RegisterClassW() failed", L"Error", MB_ICONERROR);
 
       return NULL;
@@ -220,14 +234,174 @@ birchWindowNew(unsigned int width, unsigned int height, const char *title)
 
   if (!window->hwnd)
     {
-      snprintf(error_message, 30, "CreateWindowExW() failed with code %d",
-               GetLastError());
       MessageBoxW(NULL, L"CreateWindowExW() failed", L"Error", MB_ICONERROR);
 
       return NULL;
     }
 
+  window->hdc = GetDC(window->hwnd);
   ShowWindow(window->hwnd, SW_SHOWDEFAULT);
+
+  // OpenGL Context creation
+
+  const wchar_t FAKE_CLAS_NAME[] = L"birch_fake";
+  WNDCLASS fake_wc               = { 0 };
+  fake_wc.lpfnWndProc            = DefWindowProcW;
+  fake_wc.hInstance              = hinstance;
+  fake_wc.lpszClassName          = FAKE_CLAS_NAME;
+  fake_wc.cbWndExtra             = sizeof(Win32Window *);
+
+  if (!RegisterClassW((const WNDCLASS *)&fake_wc))
+    {
+      MessageBoxW(NULL, L"Failed to register fake window class", L"Error",
+                  MB_ICONERROR);
+
+      return NULL;
+    }
+
+  HWND fake_hwnd
+      = CreateWindowW(FAKE_CLAS_NAME, L"", WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+                      0, 0, 1, 1, NULL, NULL, hinstance, NULL);
+
+  if (!fake_hwnd)
+    {
+      MessageBoxW(NULL, L"Failed to create fake window", L"Error",
+                  MB_ICONERROR);
+
+      return NULL;
+    }
+
+  HDC fake_hdc = GetDC(fake_hwnd);
+  PIXELFORMATDESCRIPTOR fakePFD;
+  ZeroMemory(&fakePFD, sizeof(fakePFD));
+  fakePFD.nSize    = sizeof(fakePFD);
+  fakePFD.nVersion = 1;
+  fakePFD.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+  fakePFD.iPixelType = PFD_TYPE_RGBA;
+  fakePFD.cColorBits = 32;
+  fakePFD.cAlphaBits = 8;
+  fakePFD.cDepthBits = 24;
+
+  int fakePFDID = ChoosePixelFormat(fake_hdc, &fakePFD);
+  if (fakePFDID == 0)
+    {
+      MessageBoxW(NULL, L"Failed to choose fake pixel format", L"Error",
+                  MB_ICONERROR);
+      DestroyWindow(fake_hwnd);
+      UnregisterClassW(FAKE_CLAS_NAME, hinstance);
+      return NULL;
+    }
+
+  if (!SetPixelFormat(fake_hdc, fakePFDID, &fakePFD))
+    {
+      MessageBoxW(NULL, L"Failed to set fake pixel format", L"Error",
+                  MB_ICONERROR);
+      DestroyWindow(fake_hwnd);
+      UnregisterClassW(FAKE_CLAS_NAME, hinstance);
+      return NULL;
+    }
+
+  HGLRC fake_rc = wglCreateContext(fake_hdc);
+  if (!fake_rc)
+    {
+      MessageBoxW(NULL, L"Failed to create fake OpenGL context", L"Error",
+                  MB_ICONERROR);
+      DestroyWindow(fake_hwnd);
+      UnregisterClassW(FAKE_CLAS_NAME, hinstance);
+      return NULL;
+    }
+
+  if (!wglMakeCurrent(fake_hdc, fake_rc))
+    {
+      MessageBoxW(NULL, L"Failed to make fake OpenGL context current",
+                  L"Error", MB_ICONERROR);
+      DestroyWindow(fake_hwnd);
+      UnregisterClassW(FAKE_CLAS_NAME, hinstance);
+      wglDeleteContext(fake_rc);
+      return NULL;
+    }
+
+  gladLoaderLoadWGL(fake_hdc);
+
+  const int pixel_attribs[] = { WGL_DRAW_TO_WINDOW_ARB,
+                                GL_TRUE,
+                                WGL_SUPPORT_OPENGL_ARB,
+                                GL_TRUE,
+                                WGL_DOUBLE_BUFFER_ARB,
+                                GL_TRUE,
+                                WGL_PIXEL_TYPE_ARB,
+                                WGL_TYPE_RGBA_ARB,
+                                WGL_ACCELERATION_ARB,
+                                WGL_FULL_ACCELERATION_ARB,
+                                WGL_COLOR_BITS_ARB,
+                                32,
+                                WGL_ALPHA_BITS_ARB,
+                                8,
+                                WGL_DEPTH_BITS_ARB,
+                                24,
+                                WGL_STENCIL_BITS_ARB,
+                                8,
+                                WGL_SAMPLE_BUFFERS_ARB,
+                                GL_TRUE,
+                                WGL_SAMPLES_ARB,
+                                4,
+                                0 };
+  int pixel_format_id;
+  UINT num_formats;
+  bool status = wglChoosePixelFormatARB(window->hdc, pixel_attribs, NULL, 1,
+                                        &pixel_format_id, &num_formats);
+  if (!status || num_formats == 0)
+    {
+      MessageBoxW(NULL, L"Failed to choose pixel format", L"Error",
+                  MB_ICONERROR);
+      DestroyWindow(fake_hwnd);
+      UnregisterClassW(FAKE_CLAS_NAME, hinstance);
+      wglDeleteContext(fake_rc);
+      return NULL;
+    }
+
+  PIXELFORMATDESCRIPTOR PFD;
+  DescribePixelFormat(window->hdc, pixel_format_id, sizeof(PFD), &PFD);
+  SetPixelFormat(window->hdc, pixel_format_id, &PFD);
+
+  const int context_attribs[] = { WGL_CONTEXT_MAJOR_VERSION_ARB,
+                                  3,
+                                  WGL_CONTEXT_MINOR_VERSION_ARB,
+                                  3,
+                                  WGL_CONTEXT_PROFILE_MASK_ARB,
+                                  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+                                  0 };
+
+  window->rc = wglCreateContextAttribsARB(window->hdc, NULL, context_attribs);
+  if (!window->rc)
+    {
+      MessageBoxW(NULL, L"Failed to create OpenGL context", L"Error",
+                  MB_ICONERROR);
+      DestroyWindow(fake_hwnd);
+      UnregisterClassW(FAKE_CLAS_NAME, hinstance);
+      wglDeleteContext(fake_rc);
+      return NULL;
+    }
+
+  wglMakeCurrent(NULL, NULL);
+  wglDeleteContext(fake_rc);
+  DestroyWindow(fake_hwnd);
+  UnregisterClassW(FAKE_CLAS_NAME, hinstance);
+
+  if (!wglMakeCurrent(window->hdc, window->rc))
+    {
+      MessageBoxW(NULL, L"Failed to make OpenGL context current", L"Error",
+                  MB_ICONERROR);
+      return NULL;
+    }
+
+  if (!gladLoaderLoadGL())
+    {
+      MessageBoxW(NULL, L"Failed to load OpenGL", L"Error", MB_ICONERROR);
+      return NULL;
+    }
+
+  window->hasGl = true;
 
   return (BirchWindow *)window;
 }
@@ -239,6 +413,8 @@ birchWindowFree(BirchWindow *window)
 
   DestroyWindow(win32_window->hwnd);
   UnregisterClassW(L"birch", win32_window->hinstance);
+  ReleaseDC(win32_window->hwnd, win32_window->hdc);
+  wglDeleteContext(win32_window->rc);
   free(win32_window->title_w);
   free(win32_window);
 }
@@ -254,6 +430,8 @@ birchWindowUpdate(BirchWindow *window)
       TranslateMessage(&msg);
       DispatchMessageW(&msg);
     }
+
+  wglSwapLayerBuffers(win32_window->hdc, WGL_SWAP_MAIN_PLANE);
 }
 
 bool
