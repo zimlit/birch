@@ -17,30 +17,11 @@
  * along with birch.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "init.h"
-#include "window.h"
-#include <stddef.h>
-#include <stdio.h>
-
-int
-main()
+void
+birchInit()
 {
-  birchInit();
-
-  BirchWindow *window = birchWindowNew(640, 480, "birch");
-  if (window == NULL)
-    {
-      birchWindowFree(window);
-      return 1;
-    }
-
-  while (birchWindowShouldClose(window) == 0)
-    {
-      birchWindowUpdate(window);
-    }
-
-  birchWindowFree(window);
-  birchTerminate();
-
-  return 0;
+}
+void
+birchTerminate()
+{
 }

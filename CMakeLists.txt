@@ -23,21 +23,13 @@ project(
     LANGUAGES C
 )
 
-add_executable(birch src/main.c src/window.h src/window.c vendor/glad/src/gl.c vendor/glad/include/glad/gl.h)
-
-set_property(TARGET birch PROPERTY C_STANDARD 99)
-
-target_include_directories(birch PRIVATE src)
-
-target_include_directories(birch PUBLIC vendor/glad/include)
-
-if(MSVC)
-  target_compile_options(birch PRIVATE /W4)
-else()
-  target_compile_options(birch PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+add_executable(birch src/main.c src/init.h src/window.h src/window.c)
+target_include_directories(birch PRIVATE src vendor/glad/include)
 
 if (WIN32)
-  target_sources(birch PRIVATE src/platform/win32/win32window.c vendor/glad/src/wgl.c vendor/glad/include/glad/wgl.h)
   target_link_libraries(birch PRIVATE opengl32)
+  target_sources(birch PRIVATE src/platform/win32/win32window.c src/platform/win32/win32init.c)
+elseif(APPLE)
+  target_sources(birch PRIVATE src/platform/macos/macosWindow.m src/platform/macos/macosInit.m)
+  target_link_libraries(birch PRIVATE "-framework Cocoa")
 endif()
