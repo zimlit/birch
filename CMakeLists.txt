@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with birch.  If not, see <http://www.gnu.org/licenses/>.
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.29)
 
 project(
     birch
@@ -23,8 +23,12 @@ project(
     LANGUAGES C
 )
 
-add_executable(birch src/main.c src/init.h src/window.h src/window.c)
-target_include_directories(birch PRIVATE src vendor/glad/include)
+add_library(birch src/init.h src/window.h src/window.c)
+target_include_directories(birch PRIVATE vendor/glad/include include/birch)
+target_include_directories(birch INTERFACE include)
+set_property(TARGET birch PROPERTY C_STANDARD 99)
+
+add_subdirectory(sandbox)
 
 if (WIN32)
   target_link_libraries(birch PRIVATE opengl32)

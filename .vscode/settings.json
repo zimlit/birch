@@ -4,6 +4,7 @@
         "d2dbasetypes.h": "c",
         "d2d1.h": "c",
         "stdint.h": "c",
-        "d2derr.h": "c"
+        "d2derr.h": "c",
+        "wgl.h": "c"
     }
 }

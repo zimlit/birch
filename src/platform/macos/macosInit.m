@@ -24,40 +24,39 @@
 @implementation AppMenu
 - (instancetype)initWithTitle:(NSString *)title
 {
-  self = [super initWithTitle:title];
+    self = [super initWithTitle:title];
 
-  @autoreleasepool
-  {
-    NSString *name   = @"Birch";
-    NSMenuItem *quit = [NSMenuItem alloc];
-    quit.submenu     = [[NSMenu alloc] initWithTitle:@"quit"];
-    [quit.submenu
-        addItem:[[NSMenuItem alloc]
-                    initWithTitle:[NSString stringWithFormat:@"Quit %@", name]
-                           action:@selector(terminate:)
-                    keyEquivalent:@"q"]];
-    [self addItem:quit];
-  }
+    @autoreleasepool
+    {
+        NSString *name = @"Birch";
+        NSMenuItem *quit = [NSMenuItem alloc];
+        quit.submenu = [[NSMenu alloc] initWithTitle:@"quit"];
+        [quit.submenu
+            addItem:[[NSMenuItem alloc]
+                        initWithTitle:[NSString
+                                          stringWithFormat:@"Quit %@", name]
+                               action:@selector(terminate:)
+                        keyEquivalent:@"q"]];
+        [self addItem:quit];
+    }
 
-  return self;
+    return self;
 }
 @end
 
-void
-birchInit()
+void birchInit()
 {
-  [NSApplication sharedApplication];
-  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    [NSApplication sharedApplication];
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-  AppMenu *menu  = [[AppMenu alloc] initWithTitle:@"Birch"];
-  NSApp.mainMenu = menu;
+    AppMenu *menu = [[AppMenu alloc] initWithTitle:@"Birch"];
+    NSApp.mainMenu = menu;
 
-  [NSApp finishLaunching];
+    [NSApp finishLaunching];
 }
 
-void
-birchTerminate()
+void birchTerminate()
 {
-  [NSApp terminate:nil];
-  [NSApp release];
+    [NSApp terminate:nil];
+    [NSApp release];
 }
