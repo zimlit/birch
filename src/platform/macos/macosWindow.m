@@ -15,8 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with birch.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "shaderTypes.h"
+#include "shaders_metallib.h"
 #include "window.h"
 #include <Cocoa/Cocoa.h>
+#include <MetalKit/MetalKit.h>
+#include <dispatch/dispatch.h>
+#include <simd/simd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,7 +76,117 @@ struct MacosWindow
 }
 @end
 
-@interface MacosView : NSView
+@interface MacosRenderer : NSObject<MTKViewDelegate>
+{
+}
+
+- (nonnull instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView;
+@end
+
+@implementation MacosRenderer
+{
+    id<MTLDevice> device;
+
+    id<MTLRenderPipelineState> pipelineState;
+
+    // The command queue used to pass commands to the device.
+    id<MTLCommandQueue> commandQueue;
+}
+
+- (nonnull instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView
+{
+    self = [super init];
+    if (self)
+    {
+        NSError *error;
+
+        device = mtkView.device;
+
+        dispatch_data_t data = dispatch_data_create(
+            shaders_metallib_data,
+            shaders_metallib_size,
+            NULL,
+            DISPATCH_DATA_DESTRUCTOR_DEFAULT
+        );
+
+        id<MTLLibrary> library = [device newLibraryWithData:data error:&error];
+
+        NSAssert(library, @"Failed to create library: %@", error);
+
+        id<MTLFunction> vertexFunction =
+            [library newFunctionWithName:@"vertexShader"];
+        id<MTLFunction> fragmentFunction =
+            [library newFunctionWithName:@"fragmentShader"];
+
+        MTLRenderPipelineDescriptor *pipelineDescriptor =
+            [[MTLRenderPipelineDescriptor alloc] init];
+        pipelineDescriptor.label = @"Simple Pipeline";
+        pipelineDescriptor.vertexFunction = vertexFunction;
+        pipelineDescriptor.fragmentFunction = fragmentFunction;
+        pipelineDescriptor.colorAttachments[0].pixelFormat =
+            mtkView.colorPixelFormat;
+
+        pipelineState =
+            [device newRenderPipelineStateWithDescriptor:pipelineDescriptor
+                                                   error:&error];
+
+        NSAssert(pipelineState, @"Failed to create pipeline state: %@", error);
+
+        // Create the command queue
+        commandQueue = [device newCommandQueue];
+    }
+
+    return self;
+}
+
+- (void)drawInMTKView:(MTKView *)view
+{
+    static const Vertex verticies[] = {
+        {{-1.0, -1.0}, {1.0, 0.0, 0.0, 1.0}},
+        {{1.0, -1.0},  {0.0, 1.0, 0.0, 1.0}},
+        {{0.0, 1.0},   {0.0, 0.0, 1.0, 1.0}},
+    };
+
+    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+    MTLRenderPassDescriptor *renderPassDescriptor =
+        view.currentRenderPassDescriptor;
+
+    if (renderPassDescriptor != nil)
+    {
+        id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer
+            renderCommandEncoderWithDescriptor:renderPassDescriptor];
+
+        [renderEncoder setViewport:(MTLViewport
+                                   ){0.0,
+                                     0.0,
+                                     view.drawableSize.width,
+                                     view.drawableSize.height,
+                                     -1.0,
+                                     1.0}];
+        [renderEncoder setRenderPipelineState:pipelineState];
+
+        [renderEncoder setVertexBytes:verticies
+                               length:sizeof(verticies)
+                              atIndex:0];
+
+        [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
+                          vertexStart:0
+                          vertexCount:3];
+
+        [renderEncoder endEncoding];
+
+        [commandBuffer presentDrawable:view.currentDrawable];
+    }
+
+    [commandBuffer commit];
+}
+
+- (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size
+{
+}
+@end
+
+@interface MacosView : MTKView
 {
     MacosWindow *window;
 }
@@ -83,10 +198,19 @@ struct MacosWindow
 @implementation MacosView
 - (instancetype)initWithFrame:(NSRect)frameRect window:(MacosWindow *)initWindow
 {
-    self = [super initWithFrame:frameRect];
+    self = [super initWithFrame:frameRect
+                         device:MTLCreateSystemDefaultDevice()];
     if (self != nil)
     {
         window = initWindow;
+        self.enableSetNeedsDisplay = YES;
+        self.device = MTLCreateSystemDefaultDevice();
+
+        self.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+
+        self.delegate = [[MacosRenderer alloc] initWithMetalKitView:self];
+
+        [self.delegate mtkView:self drawableSizeWillChange:self.drawableSize];
     }
     return self;
 }
@@ -100,6 +224,14 @@ struct MacosWindow
             event.locationInWindow.y
         );
     }
+}
+
+- (void)keyDown:(NSEvent *)event
+{
+}
+
+- (void)keyUp:(NSEvent *)event
+{
 }
 @end
 

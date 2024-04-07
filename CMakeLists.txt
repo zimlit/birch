@@ -17,13 +17,15 @@
 
 cmake_minimum_required(VERSION 3.29)
 
+include(cmake/FileEmbed.cmake)
+
 project(
     birch
     VERSION 0.1
     LANGUAGES C
 )
 
-add_library(birch src/init.h src/window.h src/window.c)
+add_library(birch include/birch/init.h include/birch/window.h src/window.c)
 target_include_directories(birch PRIVATE vendor/glad/include include/birch)
 target_include_directories(birch INTERFACE include)
 set_property(TARGET birch PROPERTY C_STANDARD 99)
@@ -35,5 +37,21 @@ if (WIN32)
   target_sources(birch PRIVATE src/platform/win32/win32window.c src/platform/win32/win32init.c)
 elseif(APPLE)
   target_sources(birch PRIVATE src/platform/macos/macosWindow.m src/platform/macos/macosInit.m)
-  target_link_libraries(birch PRIVATE "-framework Cocoa")
+  target_link_libraries(birch PRIVATE "-framework Cocoa -framework MetalKit -framework Metal")
+
+  add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/shaders.metallib"
+    COMMAND xcrun -sdk macosx metal -c "${CMAKE_SOURCE_DIR}/src/platform/macos/shaders.metal" -o "${CMAKE_BINARY_DIR}/shaders.air"
+    COMMAND xcrun -sdk macosx metallib "${CMAKE_BINARY_DIR}/shaders.air" -o "${CMAKE_BINARY_DIR}/shaders.metallib"
+    DEPENDS "${CMAKE_SOURCE_DIR}/src/platform/macos/shaders.metal"
+  )
+
+  add_custom_target(
+    shaders ALL
+    DEPENDS "${CMAKE_BINARY_DIR}/shaders.metallib"
+  )
+
+  FileEmbedSetup()
+  FileEmbedAdd("${CMAKE_BINARY_DIR}/shaders.metallib")
+  target_link_libraries(birch PRIVATE file_embed)
 endif()

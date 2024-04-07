@@ -28,13 +28,12 @@
 
     @autoreleasepool
     {
-        NSString *name = @"Birch";
         NSMenuItem *quit = [NSMenuItem alloc];
         quit.submenu = [[NSMenu alloc] initWithTitle:@"quit"];
         [quit.submenu
             addItem:[[NSMenuItem alloc]
                         initWithTitle:[NSString
-                                          stringWithFormat:@"Quit %@", name]
+                                          stringWithFormat:@"Quit %@", title]
                                action:@selector(terminate:)
                         keyEquivalent:@"q"]];
         [self addItem:quit];
@@ -44,12 +43,13 @@
 }
 @end
 
-void birchInit()
+void birchInit(const char *name)
 {
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-    AppMenu *menu = [[AppMenu alloc] initWithTitle:@"Birch"];
+    AppMenu *menu =
+        [[AppMenu alloc] initWithTitle:[NSString stringWithUTF8String:name]];
     NSApp.mainMenu = menu;
 
     [NSApp finishLaunching];

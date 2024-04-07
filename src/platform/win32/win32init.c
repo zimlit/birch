@@ -17,7 +17,7 @@
  * along with birch.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-void birchInit()
+void birchInit(const char *name)
 {
 }
 void birchTerminate()
