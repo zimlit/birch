@@ -25,7 +25,7 @@ int main()
 {
     birchInit("Sandbox");
 
-    BirchWindow *window = birchWindowNew(800, 600, "sandbox");
+    BirchWindow *window = birchWindowNew(72 * 6, 72 * 6, "sandbox");
 
     while (!birchWindowShouldClose(window))
     {

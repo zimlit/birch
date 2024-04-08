@@ -197,6 +197,8 @@ birchWindowNew(unsigned int width, unsigned int height, const char *title)
         return NULL;
     }
 
+    // todo transform points to pixels
+
     window->base.width = width;
     window->base.height = height;
     window->base.title = title;

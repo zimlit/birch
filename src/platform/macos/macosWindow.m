@@ -65,12 +65,27 @@ struct MacosWindow
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)frameSize
 {
-    window->base.width = frameSize.width;
-    window->base.height = frameSize.height;
+    CGDirectDisplayID displayID =
+        ((NSNumber *)NSScreen.mainScreen.deviceDescription[@"NSScreenNumber"])
+            .unsignedIntegerValue;
+
+    CGSize screenSize = CGDisplayScreenSize(displayID);
+
+    window->base.width =
+        ((frameSize.width / NSWidth(NSScreen.mainScreen.frame)) *
+         screenSize.width) *
+        2.8346456693;
+    window->base.height =
+        ((frameSize.height / NSHeight(NSScreen.mainScreen.frame)) *
+         screenSize.height) *
+        2.8346456693;
+
+    printf("width: %f\n", window->base.width);
+    printf("height: %f\n", window->base.height);
 
     if (window->base.resizeCallback)
     {
-        window->base.resizeCallback(frameSize.width, frameSize.height);
+        window->base.resizeCallback(window->base.width, window->base.height);
     }
     return frameSize;
 }
@@ -80,7 +95,8 @@ struct MacosWindow
 {
 }
 
-- (nonnull instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView;
+- (nonnull instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView
+                                      window:(MacosWindow *)initWindow;
 @end
 
 @implementation MacosRenderer
@@ -91,13 +107,18 @@ struct MacosWindow
 
     // The command queue used to pass commands to the device.
     id<MTLCommandQueue> commandQueue;
+
+    MacosWindow *window;
 }
 
 - (nonnull instancetype)initWithMetalKitView:(nonnull MTKView *)mtkView
+                                      window:(MacosWindow *)initWindow
 {
     self = [super init];
     if (self)
     {
+        window = initWindow;
+
         NSError *error;
 
         device = mtkView.device;
@@ -134,6 +155,13 @@ struct MacosWindow
 
         // Create the command queue
         commandQueue = [device newCommandQueue];
+
+        CGDirectDisplayID displayID =
+            ((NSNumber *)
+                 NSScreen.mainScreen.deviceDescription[@"NSScreenNumber"])
+                .unsignedIntegerValue;
+
+        CGSize screenSize = CGDisplayScreenSize(displayID);
     }
 
     return self;
@@ -142,9 +170,9 @@ struct MacosWindow
 - (void)drawInMTKView:(MTKView *)view
 {
     static const Vertex verticies[] = {
-        {{-1.0, -1.0}, {1.0, 0.0, 0.0, 1.0}},
-        {{1.0, -1.0},  {0.0, 1.0, 0.0, 1.0}},
-        {{0.0, 1.0},   {0.0, 0.0, 1.0, 1.0}},
+        {{0, 0},   {1.0, 0.0, 0.0, 1.0}},
+        {{72, 0},  {0.0, 1.0, 0.0, 1.0}},
+        {{36, 72}, {0.0, 0.0, 1.0, 1.0}},
     };
 
     id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
@@ -165,9 +193,23 @@ struct MacosWindow
                                      1.0}];
         [renderEncoder setRenderPipelineState:pipelineState];
 
-        [renderEncoder setVertexBytes:verticies
-                               length:sizeof(verticies)
-                              atIndex:0];
+        id<MTLBuffer> vertexBuffer;
+        vertexBuffer = [device newBufferWithBytes:verticies
+                                           length:sizeof(verticies)
+                                          options:MTLResourceStorageModeShared];
+
+        [renderEncoder setVertexBuffer:vertexBuffer offset:0 atIndex:0];
+
+        VertexUniforms uniforms = {
+            .pointsWide = window->base.width,
+            .pointsHigh = window->base.height,
+        };
+        id<MTLBuffer> uniformBuffer =
+            [device newBufferWithBytes:&uniforms
+                                length:sizeof(uniforms)
+                               options:MTLResourceStorageModeShared];
+
+        [renderEncoder setVertexBuffer:uniformBuffer offset:0 atIndex:1];
 
         [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
                           vertexStart:0
@@ -176,9 +218,16 @@ struct MacosWindow
         [renderEncoder endEncoding];
 
         [commandBuffer presentDrawable:view.currentDrawable];
+
+        // Release stuff
+        [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
+            [vertexBuffer release];
+            [renderEncoder release];
+        }];
     }
 
     [commandBuffer commit];
+    [commandBuffer release];
 }
 
 - (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size
@@ -206,9 +255,8 @@ struct MacosWindow
         self.enableSetNeedsDisplay = YES;
         self.device = MTLCreateSystemDefaultDevice();
 
-        self.clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-
-        self.delegate = [[MacosRenderer alloc] initWithMetalKitView:self];
+        self.delegate = [[MacosRenderer alloc] initWithMetalKitView:self
+                                                             window:window];
 
         [self.delegate mtkView:self drawableSizeWillChange:self.drawableSize];
     }
@@ -244,6 +292,12 @@ birchWindowNew(unsigned int width, unsigned int height, const char *title)
         return NULL;
     }
 
+    CGDirectDisplayID displayID =
+        ((NSNumber *)NSScreen.mainScreen.deviceDescription[@"NSScreenNumber"])
+            .unsignedIntegerValue;
+
+    CGSize screenSize = CGDisplayScreenSize(displayID);
+
     window->base.width = width;
     window->base.height = height;
     window->base.title = title;
@@ -255,7 +309,14 @@ birchWindowNew(unsigned int width, unsigned int height, const char *title)
     window->base.mouseButtonReleasedCallback = NULL;
     window->shouldClose = false;
 
-    window->rect = NSMakeRect(0, 0, width, height);
+    window->rect = NSMakeRect(
+        0,
+        0,
+        (width / (screenSize.width * 2.8346456693)) *
+            NSWidth(NSScreen.mainScreen.frame),
+        height / (screenSize.height * 2.8346456693) *
+            NSHeight(NSScreen.mainScreen.frame)
+    );
     window->window = [[NSWindow alloc]
         initWithContentRect:window->rect
                   styleMask:NSWindowStyleMaskTitled |

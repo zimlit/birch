@@ -166,8 +166,8 @@
 
 typedef struct
 {
-    unsigned int width;
-    unsigned int height;
+    float width;
+    float height;
     const char *title;
     void (*mouseMovedCallback)(int x, int y);
     void (*resizeCallback)(int width, int height);
@@ -177,6 +177,11 @@ typedef struct
     void (*mouseButtonReleasedCallback)(int button);
 } BirchWindow;
 
+/// @brief Create a new window
+/// @param width width of the window in points (1/72 in)
+/// @param height height of the window in points (1/72 in)
+/// @param title title of the window as a utf8-encoded string
+/// @return the new window
 BirchWindow *
 birchWindowNew(unsigned int width, unsigned int height, const char *title);
 void birchWindowFree(BirchWindow *window);

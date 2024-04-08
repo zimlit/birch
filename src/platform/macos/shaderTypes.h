@@ -25,4 +25,9 @@ typedef struct {
     vector_float4 color;
 } Vertex;
 
+typedef struct {
+    float pointsWide;
+    float pointsHigh;
+} VertexUniforms;
+
 #endif
